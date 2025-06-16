@@ -6,6 +6,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import CANNON from 'cannon-es';
+import * as THREE from 'three'; // Added for Trimesh generation
 
 console.log("Imports completed.");
 
@@ -51,14 +52,103 @@ const vehicleGroundContactMaterial = new CANNON.ContactMaterial(
 );
 world.addContactMaterial(vehicleGroundContactMaterial);
 
-// --- Ground Physics ---
-const groundSize = { x: 100, y: 0.1, z: 100 }; // Match client-side display size (x and z)
-const groundShape = new CANNON.Box(new CANNON.Vec3(groundSize.x * 0.5, groundSize.y * 0.5, groundSize.z * 0.5));
-const groundBody = new CANNON.Body({ mass: 0, material: groundMaterial }); // mass 0 で静的オブジェクト
-groundBody.addShape(groundShape);
-groundBody.position.set(0, -groundSize.y * 0.5, 0); // 地面を原点直下に配置
-world.addBody(groundBody);
-console.log("Ground physics setup completed.");
+// --- Ground Physics (Oval Course) ---
+// const groundSize = { x: 100, y: 0.1, z: 100 }; // Old flat ground
+// const groundShape = new CANNON.Box(new CANNON.Vec3(groundSize.x * 0.5, groundSize.y * 0.5, groundSize.z * 0.5));
+// const groundBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+// groundBody.addShape(groundShape);
+// groundBody.position.set(0, -groundSize.y * 0.5, 0);
+// world.addBody(groundBody);
+// console.log("Old ground physics setup removed.");
+
+const groundHeight = 0.1;
+const straightLength = 70; // Reduced length for initial testing
+const straightWidth = 10;
+const straightSpacing = 40; // Reduced spacing
+
+function createStraightSectionPhysics(width, height, length, position) {
+    const shape = new CANNON.Box(new CANNON.Vec3(width * 0.5, height * 0.5, length * 0.5));
+    const body = new CANNON.Body({ mass: 0, material: groundMaterial });
+    body.addShape(shape);
+    body.position.copy(position);
+    world.addBody(body);
+    console.log(`Straight section created at ${position.x}, ${position.y}, ${position.z}`);
+}
+
+function createCornerSectionPhysics(arcCenterPos, innerRadius, outerRadius, height, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name) {
+    const shape = new THREE.Shape();
+    shape.moveTo(innerRadius * Math.cos(shapeStartAngle), innerRadius * Math.sin(shapeStartAngle));
+    shape.absarc(0, 0, innerRadius, shapeStartAngle, shapeEndAngle, !shapeOuterArcClockwise);
+    shape.lineTo(outerRadius * Math.cos(shapeEndAngle), outerRadius * Math.sin(shapeEndAngle));
+    shape.absarc(0, 0, outerRadius, shapeEndAngle, shapeStartAngle, shapeOuterArcClockwise);
+    shape.closePath();
+
+    const extrudeSettings = {
+        depth: height,
+        bevelEnabled: false,
+    };
+    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    geometry.rotateX(-Math.PI / 2); // Align with XZ plane
+    // No need to translate geometry here, body position will handle it
+
+    const vertices = geometry.attributes.position.array;
+    let indices;
+    if (geometry.index) {
+        indices = geometry.index.array;
+    } else {
+        indices = [];
+        for (let i = 0; i < vertices.length / 3; i += 3) {
+            indices.push(i, i + 1, i + 2);
+        }
+    }
+
+    // Convert Float32Array to regular array for Cannon.js
+    const cannonVertices = [];
+    for (let i = 0; i < vertices.length; i++) {
+        cannonVertices.push(vertices[i]);
+    }
+    const cannonIndices = [];
+    for (let i = 0; i < indices.length; i++) {
+        cannonIndices.push(indices[i]);
+    }
+    
+    const cannonShape = new CANNON.Trimesh(cannonVertices, cannonIndices);
+    const body = new CANNON.Body({ mass: 0, material: groundMaterial });
+    body.addShape(cannonShape);
+    body.position.copy(arcCenterPos); // Set position of the Trimesh body
+    // body.quaternion.copy(mesh.quaternion); // Not needed as geometry is already rotated
+    world.addBody(body);
+    console.log(`Corner section '${name}' created at ${arcCenterPos.x}, ${arcCenterPos.y}, ${arcCenterPos.z}`);
+}
+
+// Create the oval course physics
+// Straight 1
+createStraightSectionPhysics(straightWidth, groundHeight, straightLength, new CANNON.Vec3(-straightSpacing / 2, -groundHeight / 2, 0));
+// Straight 2
+createStraightSectionPhysics(straightWidth, groundHeight, straightLength, new CANNON.Vec3(straightSpacing / 2, -groundHeight / 2, 0));
+
+// Corner parameters
+const R_inner = straightSpacing / 2 - straightWidth / 2;
+const R_outer = straightSpacing / 2 + straightWidth / 2;
+const arcCenterY = -groundHeight / 2;
+
+// Corner 1 (Positive Z)
+const arcPos1 = new CANNON.Vec3(0, arcCenterY, straightLength / 2);
+try {
+    createCornerSectionPhysics(arcPos1, R_inner, R_outer, groundHeight, Math.PI, 0, true, "corner1_physics");
+} catch (e) {
+    console.error("Error creating corner1 physics:", e);
+}
+
+// Corner 2 (Negative Z)
+const arcPos2 = new CANNON.Vec3(0, arcCenterY, -straightLength / 2);
+try {
+    createCornerSectionPhysics(arcPos2, R_inner, R_outer, groundHeight, 0, Math.PI, true, "corner2_physics");
+} catch (e) {
+    console.error("Error creating corner2 physics:", e);
+}
+
+console.log("Oval course physics setup initiated.");
 
 // --- Vehicle Physics (Manages multiple vehicles) ---
 const vehicles = new Map(); // Stores vehicle data (vehicle, chassisBody, id) keyed by WebSocket client
@@ -67,14 +157,15 @@ let nextVehicleId = 0;
 function createVehiclePhysics(ws) {
     const chassisSize = { x: 1, y: 0.5, z: 2 };
     const chassisShape = new CANNON.Box(new CANNON.Vec3(chassisSize.x * 0.5, chassisSize.y * 0.5, chassisSize.z * 0.5));
-    const initialPosition = new CANNON.Vec3(Math.random() * 8 - 4, 2, Math.random() * 8 - 4); // Store initial position
-    const chassisBody = new CANNON.Body({
+    // Adjust initial position to be on one of the straights
+    const initialPosition = new CANNON.Vec3(-straightSpacing / 2, 2, Math.random() * straightLength * 0.4 - straightLength * 0.2); 
+    const chassisBody = new CANNON.Body({ 
         mass: 150,
         material: vehicleMaterial,
         position: initialPosition.clone(), // Use clone for initial setup
     });
     chassisBody.addShape(chassisShape);
-    chassisBody.linearDamping = 0.15; // Add linear damping for speed control
+    chassisBody.linearDamping = 0.1; // Reduced from 0.15
     world.addBody(chassisBody);
 
     const vehicle = new CANNON.RaycastVehicle({

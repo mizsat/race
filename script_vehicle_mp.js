@@ -2,6 +2,7 @@ import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
 
 // --- Scene Setup ---
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xabcdef); // Add background color
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -9,20 +10,20 @@ renderer.shadowMap.enabled = true; // Enable shadows
 document.body.appendChild(renderer.domElement);
 
 // --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Changed from 0.6
 scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(10, 30, 10); // Changed Y from 15 to 30
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Changed from 0.8
+directionalLight.position.set(10, 50, 5); // Match script.js: Y from 30 to 50, Z from 10 to 5
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 1024;
 directionalLight.shadow.mapSize.height = 1024;
-// Adjust shadow camera properties to cover a larger area
-directionalLight.shadow.camera.left = -100; // Default was -5
-directionalLight.shadow.camera.right = 100;  // Default was 5
-directionalLight.shadow.camera.top = 100;    // Default was 5
-directionalLight.shadow.camera.bottom = -100; // Default was -5
-directionalLight.shadow.camera.near = 0.5;   // Default was 0.5
-directionalLight.shadow.camera.far = 200;    // Default was 500, but light position is closer
+// Adjust shadow camera properties to cover a larger area, matching script.js
+directionalLight.shadow.camera.left = -120;
+directionalLight.shadow.camera.right = 120;
+directionalLight.shadow.camera.top = 130;
+directionalLight.shadow.camera.bottom = -130;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 500; // Match script.js: far from 200 to 500
 
 scene.add(directionalLight);
 
@@ -30,40 +31,102 @@ scene.add(directionalLight);
 const shadowHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
 scene.add(shadowHelper);
 
-// --- Ground Graphics ---
-// Function to create a checkerboard texture
-function createCheckerboardTexture(size = 1024, checks = 64) {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext('2d');
-    const checkSize = size / checks;
+// --- Ground Graphics (Oval Course) ---
+// const groundGeometry = new THREE.BoxGeometry(100, 0.2, 100); // Old flat ground
+// const checkerboardTexture = createCheckerboardTexture(512, 32);
+// const groundMaterial = new THREE.MeshStandardMaterial({
+//    map: checkerboardTexture,
+//    roughness: 0.8,
+//    metalness: 0.2
+// });
+// const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+// groundMesh.position.y = -0.1;
+// groundMesh.receiveShadow = true;
+// scene.add(groundMesh);
+// console.log("Old ground graphics removed.");
 
-    for (let i = 0; i < checks; i++) {
-        for (let j = 0; j < checks; j++) {
-            context.fillStyle = (i + j) % 2 === 0 ? '#FFFFFF' : '#AAAAAA'; // White and light gray
-            context.fillRect(i * checkSize, j * checkSize, checkSize, checkSize);
-        }
-    }
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(checks / 2, checks / 2); // Adjust repeat based on ground size and desired check density
-    return texture;
-}
+const groundHeightClient = 0.2; // Corresponds to server's groundHeight * 2 (due to BoxGeometry definition)
+const straightLengthClient = 70; // Match server-side
+const straightWidthClient = 10;  // Match server-side
+const straightSpacingClient = 40; // Match server-side
 
-const groundGeometry = new THREE.BoxGeometry(100, 0.2, 100); // Larger ground
-const checkerboardTexture = createCheckerboardTexture(512, 32); // Create texture
-const groundMaterial = new THREE.MeshStandardMaterial({
-    // color: 0x808080, // Color is now primarily from texture
-    map: checkerboardTexture, // Apply texture
+const baseGroundMaterial = new THREE.MeshStandardMaterial({
+    map: createCheckerboardTexture(64, 64, 8, 8, '#aaaaaa', '#bbbbbb'), // Match script.js arguments
     roughness: 0.8,
     metalness: 0.2
 });
-const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-groundMesh.position.y = -0.1; // Align with server-side ground
-groundMesh.receiveShadow = true;
-scene.add(groundMesh);
+baseGroundMaterial.map.wrapS = THREE.RepeatWrapping;
+baseGroundMaterial.map.wrapT = THREE.RepeatWrapping;
+
+function createStraightSectionGraphics(width, height, length, position, textureRepeatX, textureRepeatY) {
+    const geometry = new THREE.BoxGeometry(width, height, length);
+    const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
+    material.map = baseGroundMaterial.map.clone();
+    material.map.repeat.set(textureRepeatX, textureRepeatY);
+    material.map.needsUpdate = true;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+}
+
+function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, height, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name, textureRepeatU, textureRepeatV) {
+    const shape = new THREE.Shape();
+    shape.moveTo(innerRadius * Math.cos(shapeStartAngle), innerRadius * Math.sin(shapeStartAngle));
+    shape.absarc(0, 0, innerRadius, shapeStartAngle, shapeEndAngle, !shapeOuterArcClockwise);
+    shape.lineTo(outerRadius * Math.cos(shapeEndAngle), outerRadius * Math.sin(shapeEndAngle));
+    shape.absarc(0, 0, outerRadius, shapeEndAngle, shapeStartAngle, shapeOuterArcClockwise);
+    shape.closePath();
+
+    const extrudeSettings = {
+        depth: height,
+        bevelEnabled: false,
+    };
+    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    geometry.rotateX(-Math.PI / 2); // Align with XZ plane
+
+    const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
+    material.map = baseGroundMaterial.map.clone();
+    // For ExtrudeGeometry, UVs might need more complex handling for perfect texture mapping on curves.
+    // Simple repeat might look stretched. For now, using a basic repeat.
+    const courseWidth = outerRadius - innerRadius;
+    const averageCircumference = Math.PI * (innerRadius + outerRadius) / 2; // Half circumference for a semi-circle
+    material.map.repeat.set(courseWidth / 2, averageCircumference / 5); // Example repeat, adjust as needed
+    material.map.needsUpdate = true;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(arcCenterPos);
+    mesh.receiveShadow = true;
+    mesh.name = name;
+    scene.add(mesh);
+}
+
+// Create the oval course graphics
+// Straight 1
+createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
+    new THREE.Vector3(-straightSpacingClient / 2, -groundHeightClient / 2, 0), 
+    straightWidthClient / 2, straightLengthClient / 5); // Texture repeat reverted
+// Straight 2
+createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
+    new THREE.Vector3(straightSpacingClient / 2, -groundHeightClient / 2, 0),
+    straightWidthClient / 2, straightLengthClient / 5); // Texture repeat reverted
+
+// Corner parameters
+const R_inner_client = straightSpacingClient / 2 - straightWidthClient / 2;
+const R_outer_client = straightSpacingClient / 2 + straightWidthClient / 2;
+const arcCenterY_client = -groundHeightClient / 2;
+
+// Corner 1 (Positive Z)
+const arcPos1_client = new THREE.Vector3(0, arcCenterY_client, straightLengthClient / 2);
+createCornerSectionGraphics(arcPos1_client, R_inner_client, R_outer_client, groundHeightClient, Math.PI, 0, true, "corner1_graphics", 5, 10);
+
+// Corner 2 (Negative Z)
+const arcPos2_client = new THREE.Vector3(0, arcCenterY_client, -straightLengthClient / 2);
+createCornerSectionGraphics(arcPos2_client, R_inner_client, R_outer_client, groundHeightClient, 0, Math.PI, true, "corner2_graphics", 5, 10);
+
+console.log("Oval course graphics setup initiated.");
+
 
 // --- Vehicle Graphics (Manages multiple vehicles) ---
 const vehicleMeshes = {}; // Stores vehicle meshes (chassis + wheels) by ID
@@ -264,4 +327,24 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+function createCheckerboardTexture(width, height, segmentsX, segmentsY, color1, color2) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+
+    const segmentWidth = width / segmentsX;
+    const segmentHeight = height / segmentsY;
+
+    for (let y = 0; y < segmentsY; y++) {
+        for (let x = 0; x < segmentsX; x++) {
+            context.fillStyle = (x + y) % 2 === 0 ? color1 : color2;
+            context.fillRect(x * segmentWidth, y * segmentHeight, segmentWidth, segmentHeight);
+        }
+    }
+    return new THREE.CanvasTexture(canvas);
+}
+
+// --- Three.js setup ---
 
