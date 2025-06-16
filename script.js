@@ -17,6 +17,7 @@ const keyMap = {
     ArrowDown: false,
     ArrowLeft: false,
     ArrowRight: false,
+    Space: false, // Add Space for braking
 };
 
 init();
@@ -43,6 +44,15 @@ function init() {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(10, 20, 5);
     directionalLight.castShadow = true;
+    // Adjust shadow camera properties for wider shadow coverage
+    directionalLight.shadow.camera.left = -100; // Previously -60
+    directionalLight.shadow.camera.right = 100; // Previously 60
+    directionalLight.shadow.camera.top = 100; // Previously 60
+    directionalLight.shadow.camera.bottom = -100; // Previously -60
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+    directionalLight.shadow.mapSize.width = 1024; // Keep resolution or adjust as needed
+    directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
 
     // Cannon.js Initialization
@@ -111,7 +121,7 @@ function createChassis(material) {
 
     // Cannon.js Chassis Body
     const chassisShape = new CANNON.Box(new CANNON.Vec3(chassisSize.x * 0.5, chassisSize.y * 0.5, chassisSize.z * 0.5));
-    chassisBody = new CANNON.Body({ mass: 150, material: material });
+    chassisBody = new CANNON.Body({ mass: 300, material: material }); // Increased mass from 150 to 300
     chassisBody.addShape(chassisShape);
     chassisBody.position.set(0, 1, 0); // Start slightly above ground
     world.addBody(chassisBody);
@@ -158,43 +168,58 @@ function setupKeyboardControls() {
 function applyForcesAndTorques() {
     if (!vehicle) return; // Ensure vehicle is initialized
 
-    const { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } = keyMap;
+    const { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Space } = keyMap;
 
-    const engineForceMagnitude = 1000; // Increased from previous moveForce for better effect
-    const steeringMagnitude = 0.5;   // Standard steering value range
+    const engineForceMagnitude = 1000;
+    const steeringMagnitude = 0.5;
+    const brakeForce = 100; // Adjust brake force as needed
 
     let currentEngineForce = 0;
     if (ArrowUp) {
-        currentEngineForce = -engineForceMagnitude; // Negative force for forward movement
+        currentEngineForce = -engineForceMagnitude;
     }
     if (ArrowDown) {
-        currentEngineForce = engineForceMagnitude;  // Positive force for backward movement
+        currentEngineForce = engineForceMagnitude;
     }
 
     let currentSteeringValue = 0;
     if (ArrowLeft) {
-        // If previous positive angular velocity (turnSpeed) caused a right turn,
-        // we now need a negative steering value for a left turn.
-        // currentSteeringValue = -steeringMagnitude; // This was still reversed
-        currentSteeringValue = steeringMagnitude; // Try positive for left
+        currentSteeringValue = steeringMagnitude;
     }
     if (ArrowRight) {
-        // If previous negative angular velocity (-turnSpeed) caused a left turn,
-        // we now need a positive steering value for a right turn.
-        // currentSteeringValue = steeringMagnitude; // This was still reversed
-        currentSteeringValue = -steeringMagnitude; // Try negative for right
+        currentSteeringValue = -steeringMagnitude;
     }
 
-    // Apply engine force to rear wheels (indices 2 and 3 for RWD)
+    // Apply engine force to rear wheels
     vehicle.applyEngineForce(currentEngineForce, 2);
     vehicle.applyEngineForce(currentEngineForce, 3);
 
-    // Apply steering to front wheels (indices 0 and 1)
+    // Apply steering to front wheels
     vehicle.setSteeringValue(currentSteeringValue, 0);
     vehicle.setSteeringValue(currentSteeringValue, 1);
 
-    // Old damping logic for chassisBody.velocity and chassisBody.angularVelocity is removed
-    // as RaycastVehicle handles its own physics and damping through wheel parameters.
+    // Apply brake
+    if (Space) {
+        vehicle.setBrake(brakeForce, 0);
+        vehicle.setBrake(brakeForce, 1);
+        vehicle.setBrake(brakeForce, 2);
+        vehicle.setBrake(brakeForce, 3);
+    } else {
+        // Release brake if space is not pressed
+        vehicle.setBrake(0, 0);
+        vehicle.setBrake(0, 1);
+        vehicle.setBrake(0, 2);
+        vehicle.setBrake(0, 3);
+    }
+
+    // Automatic braking when no acceleration/deceleration input
+    if (!ArrowUp && !ArrowDown && !Space) { // Also check if Space is not pressed
+        const autoBrakeForce = 2; // Gentle automatic brake, reduced from 10
+        vehicle.setBrake(autoBrakeForce, 0);
+        vehicle.setBrake(autoBrakeForce, 1);
+        vehicle.setBrake(autoBrakeForce, 2);
+        vehicle.setBrake(autoBrakeForce, 3);
+    }
 }
 
 function animate() {
