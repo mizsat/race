@@ -81,7 +81,18 @@ function init() {
 function createGround(material) {
     // Three.js Ground
     const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide });
+
+    // Procedural checkerboard texture
+    const checkerboardTexture = createCheckerboardTexture(64, 64, 8, 8, '#aaaaaa', '#bbbbbb');
+    checkerboardTexture.wrapS = THREE.RepeatWrapping;
+    checkerboardTexture.wrapT = THREE.RepeatWrapping;
+    checkerboardTexture.repeat.set(50, 50); // Adjust repeat for the procedural texture
+
+    const groundMaterial = new THREE.MeshStandardMaterial({
+        map: checkerboardTexture,
+        side: THREE.DoubleSide
+    });
+
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
     groundMesh.receiveShadow = true;
@@ -209,7 +220,55 @@ function animate() {
         wheelMesh.quaternion.copy(transform.quaternion);
     }
 
+    // Update camera position to follow the chassis
+    if (chassisMesh) {
+        const chassisPosition = chassisMesh.position;
+        const chassisQuaternion = chassisMesh.quaternion;
+
+        // Define camera offset from the chassis (behind and slightly above)
+        const cameraOffset = new THREE.Vector3(0, 3, -7); // x, y, z in chassis local space
+        // Apply chassis rotation to the offset
+        const worldOffset = cameraOffset.clone().applyQuaternion(chassisQuaternion);
+        // Calculate target camera position
+        const cameraTargetPosition = new THREE.Vector3().addVectors(chassisPosition, worldOffset);
+
+        // Smoothly move camera towards the target position (optional, can use direct set for now)
+        camera.position.lerp(cameraTargetPosition, 0.1); // Adjust 0.1 for different smoothing speeds
+        // camera.position.copy(cameraTargetPosition); // For direct setting without smoothing
+
+        // Make camera look at the chassis
+        camera.lookAt(chassisPosition);
+    }
+
+    // Display speed
+    if (chassisBody) {
+        const speed = chassisBody.velocity.length(); // m/s
+        const speedKmh = (speed * 3.6).toFixed(1); // km/h, 1 decimal place
+        const speedometerElement = document.getElementById('speedometer');
+        if (speedometerElement) {
+            speedometerElement.textContent = `Speed: ${speedKmh} km/h`;
+        }
+    }
+
     renderer.render(scene, camera);
+}
+
+function createCheckerboardTexture(width, height, segmentsX, segmentsY, color1, color2) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+
+    const segmentWidth = width / segmentsX;
+    const segmentHeight = height / segmentsY;
+
+    for (let y = 0; y < segmentsY; y++) {
+        for (let x = 0; x < segmentsX; x++) {
+            context.fillStyle = (x + y) % 2 === 0 ? color1 : color2;
+            context.fillRect(x * segmentWidth, y * segmentHeight, segmentWidth, segmentHeight);
+        }
+    }
+    return new THREE.CanvasTexture(canvas);
 }
 
 function addWheels(vehicle) {
