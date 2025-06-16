@@ -1,0 +1,15 @@
+{
+  "name": "car-simulation-server",
+  "version": "1.0.0",
+  "description": "Car simulation with server-side physics",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.12.0",
+    "cannon-es": "^0.20.0"
+  }
+}

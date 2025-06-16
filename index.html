@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cannon.js Chassis Demo</title>
+    <title>Multiplayer Vehicle Simulation</title> <!-- タイトルを変更 -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="speedometer">Speed: 0 km/h</div>
-    <div id="coordinates">X: 0, Y: 0, Z: 0</div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
-    <script src="script.js"></script>
+    <div id="infoPanel" style="position: absolute; top: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 10px; font-family: Arial, sans-serif;">
+        <div>Position: <span id="positionData">N/A</span></div>
+        <div>Speed: <span id="speedData">N/A</span></div>
+    </div>
+    <script type="module" src="script_vehicle_mp.js"></script> <!-- 新しいスクリプトを読み込む -->
 </body>
 </html>
