@@ -1,0 +1,8 @@
+body {
+    margin: 0;
+    overflow: hidden; /* スクロールバーを隠す */
+}
+
+canvas {
+    display: block;
+}
