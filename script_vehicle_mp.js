@@ -117,7 +117,8 @@ const keyStates = {
 };
 
 // --- WebSocket Connection ---
-const socket = new WebSocket('ws://localhost:3000');
+// const socket = new WebSocket('ws://localhost:3000'); // Original hardcoded version
+const socket = new WebSocket(`ws://${window.location.hostname}:3000`); // Use dynamic hostname
 
 socket.onopen = () => {
     console.log('Connected to WebSocket server (vehicle simulation)');
