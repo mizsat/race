@@ -12,9 +12,15 @@ canvas {
     top: 10px;
     left: 10px;
     color: white;
-    background-color: rgba(0, 0, 0, 0.5);
-    padding: 5px 10px;
+    font-size: 20px;
     font-family: Arial, sans-serif;
+}
+
+#coordinates {
+    position: absolute;
+    top: 40px; /* speedometerの下に配置 */
+    left: 10px;
+    color: white;
     font-size: 16px;
-    border-radius: 5px;
+    font-family: Arial, sans-serif;
 }

@@ -29,8 +29,11 @@ function init() {
     scene.background = new THREE.Color(0xabcdef);
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 5, 10);
-    camera.lookAt(0, 0, 0);
+    // 車両の初期位置を考慮してカメラの初期位置と注視点を設定
+    const initialChassisPosition = new THREE.Vector3(-25, 1, 0); // createChassisでの設定値
+    const cameraOffset = new THREE.Vector3(0, 3, -7); // 車両後方のオフセット
+    camera.position.copy(initialChassisPosition).add(cameraOffset);
+    camera.lookAt(initialChassisPosition);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -42,18 +45,22 @@ function init() {
     scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(10, 20, 5);
+    directionalLight.position.set(10, 50, 5); // ライトのY座標を20から50に変更
     directionalLight.castShadow = true;
-    // Adjust shadow camera properties for wider shadow coverage
-    directionalLight.shadow.camera.left = -100; // Previously -60
-    directionalLight.shadow.camera.right = 100; // Previously 60
-    directionalLight.shadow.camera.top = 100; // Previously 60
-    directionalLight.shadow.camera.bottom = -100; // Previously -60
+
+    directionalLight.shadow.camera.left = -120;
+    directionalLight.shadow.camera.right = 120;
+    directionalLight.shadow.camera.top = 130;
+    directionalLight.shadow.camera.bottom = -130;
     directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 500;
-    directionalLight.shadow.mapSize.width = 1024; // Keep resolution or adjust as needed
+    directionalLight.shadow.camera.far = 500; // farの値を元に戻す
+    directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
+
+    // シャドウカメラヘルパー (デバッグ用、必要に応じてコメント解除)
+    const shadowHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
+    scene.add(shadowHelper);
 
     // Cannon.js Initialization
     world = new CANNON.World();
@@ -89,31 +96,130 @@ function init() {
 }
 
 function createGround(material) {
-    // Three.js Ground
-    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundHeight = 0.1;
+    const straightLength = 150; // 直線の長さを200から150に変更
+    const straightWidth = 10;
+    const straightSpacing = 50; // 2つの直線間の距離（中心から中心まで）
 
-    // Procedural checkerboard texture
+    const groundMaterialCannon = material;
+
     const checkerboardTexture = createCheckerboardTexture(64, 64, 8, 8, '#aaaaaa', '#bbbbbb');
-    checkerboardTexture.wrapS = THREE.RepeatWrapping;
-    checkerboardTexture.wrapT = THREE.RepeatWrapping;
-    checkerboardTexture.repeat.set(50, 50); // Adjust repeat for the procedural texture
+    // テクスチャリピートは各セクションで設定するため、ここでは共通設定をコメントアウト
+    // checkerboardTexture.wrapS = THREE.RepeatWrapping;
+    // checkerboardTexture.wrapT = THREE.RepeatWrapping;
 
-    const groundMaterial = new THREE.MeshStandardMaterial({
-        map: checkerboardTexture,
-        side: THREE.DoubleSide
+    const groundMaterialThree = new THREE.MeshStandardMaterial({
+        map: checkerboardTexture.clone(), // Clone texture for independent repeat settings if needed
     });
+    groundMaterialThree.map.wrapS = THREE.RepeatWrapping;
+    groundMaterialThree.map.wrapT = THREE.RepeatWrapping;
 
-    const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-    groundMesh.rotation.x = -Math.PI / 2;
-    groundMesh.receiveShadow = true;
-    scene.add(groundMesh);
 
-    // Cannon.js Ground
-    const groundShape = new CANNON.Plane();
-    const groundBody = new CANNON.Body({ mass: 0, material: material });
-    groundBody.addShape(groundShape);
-    groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    world.addBody(groundBody);
+    // 1本目の直線
+    createStraightSection(groundMaterialThree, groundMaterialCannon, straightWidth, groundHeight, straightLength, new THREE.Vector3(-straightSpacing / 2, -groundHeight / 2, 0));
+
+    // 2本目の直線
+    createStraightSection(groundMaterialThree, groundMaterialCannon, straightWidth, groundHeight, straightLength, new THREE.Vector3(straightSpacing / 2, -groundHeight / 2, 0));
+
+    // コーナー部分のパラメータ
+    const R_inner = straightSpacing / 2 - straightWidth / 2; // 20
+    const R_outer = straightSpacing / 2 + straightWidth / 2; // 30
+    const arcCenterY = -groundHeight / 2;
+
+    // コーナー1 (ポジティブ Z側)
+    const arcPos1 = new THREE.Vector3(0, arcCenterY, straightLength / 2);
+    // shapeはXY平面で定義: 左(-X)から右(+X)へ半円、外側の円弧は時計回り
+    createCornerSection(groundMaterialThree, groundMaterialCannon, arcPos1, R_inner, R_outer, groundHeight, Math.PI, 0, true, "corner1");
+
+    // コーナー2 (ネガティブ Z側)
+    const arcPos2 = new THREE.Vector3(0, arcCenterY, -straightLength / 2);
+    // shapeはXY平面で定義: 右(+X)から左(-X)へ半円、外側の円弧は時計回り
+    createCornerSection(groundMaterialThree, groundMaterialCannon, arcPos2, R_inner, R_outer, groundHeight, 0, Math.PI, true, "corner2");
+}
+
+function createStraightSection(threeMaterial, cannonMaterial, width, height, length, position) {
+    // Three.js Mesh
+    const geometry = new THREE.BoxGeometry(width, height, length);
+    const material = threeMaterial.clone(); // Clone material for independent texture repeat
+    material.map = threeMaterial.map.clone(); // Clone texture for independent repeat
+    material.map.needsUpdate = true;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+
+    if (mesh.material.map) {
+        // 1タイルの物理的なサイズを targetTileSize とする (例: 1x1ユニット)
+        const targetTileSize = 1;
+        mesh.material.map.repeat.set(width / targetTileSize, length / targetTileSize);
+        mesh.material.map.needsUpdate = true;
+    }
+
+    // Cannon.js Body
+    const shape = new CANNON.Box(new CANNON.Vec3(width * 0.5, height * 0.5, length * 0.5));
+    const body = new CANNON.Body({ mass: 0, material: cannonMaterial });
+    body.addShape(shape);
+    body.position.copy(position);
+    world.addBody(body);
+}
+
+function createCornerSection(threeMaterial, cannonMaterial, arcCenterPos, innerRadius, outerRadius, groundHeight, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name) {
+    const shape = new THREE.Shape();
+    shape.moveTo(innerRadius * Math.cos(shapeStartAngle), innerRadius * Math.sin(shapeStartAngle));
+    shape.absarc(0, 0, innerRadius, shapeStartAngle, shapeEndAngle, !shapeOuterArcClockwise);
+    shape.lineTo(outerRadius * Math.cos(shapeEndAngle), outerRadius * Math.sin(shapeEndAngle));
+    shape.absarc(0, 0, outerRadius, shapeEndAngle, shapeStartAngle, shapeOuterArcClockwise);
+    shape.closePath();
+
+    const extrudeSettings = {
+        depth: groundHeight,
+        bevelEnabled: false,
+    };
+    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    geometry.rotateX(-Math.PI / 2); // XY平面で作成したshapeをXZ平面に配置
+
+    const material = threeMaterial.clone();
+    material.map = threeMaterial.map.clone();
+    material.map.needsUpdate = true;
+    
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(arcCenterPos);
+    mesh.receiveShadow = true;
+    mesh.name = name; // デバッグ用に名前を付ける
+    scene.add(mesh);
+    
+    // テクスチャリピートの調整（コーナー用） - 一時的にコメントアウトして表示を確認
+    if (mesh.material.map) {
+        // const courseWidth = outerRadius - innerRadius; 
+        // const averageCircumference = Math.PI * (innerRadius + outerRadius); 
+        
+        // mesh.material.map.repeat.set(courseWidth / 5, averageCircumference / 20);
+        // mesh.material.map.wrapS = THREE.RepeatWrapping;
+        // mesh.material.map.wrapT = THREE.RepeatWrapping;
+        mesh.material.map.needsUpdate = true; // Ensure map update is flagged
+    }
+
+
+    // Cannon.js Body
+    const threeVertices = geometry.attributes.position.array;
+    const cannonVertices = Array.from(threeVertices);
+    let cannonIndices;
+    if (geometry.index) {
+        cannonIndices = Array.from(geometry.index.array);
+    } else {
+        cannonIndices = [];
+        for (let i = 0; i < geometry.attributes.position.count / 3; i++) {
+            cannonIndices.push(i * 3 + 0, i * 3 + 1, i * 3 + 2);
+        }
+    }
+
+    const cannonShape = new CANNON.Trimesh(cannonVertices, cannonIndices);
+    const body = new CANNON.Body({ mass: 0, material: cannonMaterial });
+    body.addShape(cannonShape);
+    body.position.copy(mesh.position);
+    body.quaternion.copy(mesh.quaternion); // meshの回転を物理ボディに適用 (geometry.rotateXのため不要なはず)
+    world.addBody(body);
 }
 
 function createChassis(material) {
@@ -123,7 +229,9 @@ function createChassis(material) {
     const chassisShape = new CANNON.Box(new CANNON.Vec3(chassisSize.x * 0.5, chassisSize.y * 0.5, chassisSize.z * 0.5));
     chassisBody = new CANNON.Body({ mass: 300, material: material }); // Increased mass from 150 to 300
     chassisBody.addShape(chassisShape);
-    chassisBody.position.set(0, 1, 0); // Start slightly above ground
+    // 車両の初期位置を1本目の直線コース上に調整
+    const straightSpacing = 50; // createGroundで定義した値と同じにする
+    chassisBody.position.set(-straightSpacing / 2, 1, 0); // X座標を-25に、Yは1、Zは0
     world.addBody(chassisBody);
 
     // Create RaycastVehicle
@@ -272,6 +380,15 @@ function animate() {
         const speedometerElement = document.getElementById('speedometer');
         if (speedometerElement) {
             speedometerElement.textContent = `Speed: ${speedKmh} km/h`;
+        }
+
+        // Display coordinates
+        const coordinatesElement = document.getElementById('coordinates');
+        if (coordinatesElement) {
+            const x = chassisBody.position.x.toFixed(2);
+            const y = chassisBody.position.y.toFixed(2);
+            const z = chassisBody.position.z.toFixed(2);
+            coordinatesElement.textContent = `X: ${x}, Y: ${y}, Z: ${z}`;
         }
     }
 
