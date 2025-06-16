@@ -51,19 +51,18 @@ const straightWidthClient = 10;  // Match server-side
 const straightSpacingClient = 40; // Match server-side
 
 const baseGroundMaterial = new THREE.MeshStandardMaterial({
-    map: createCheckerboardTexture(64, 64, 8, 8, '#aaaaaa', '#bbbbbb'), // Match script.js arguments
+    color: 0x808080, // Set color to grey
     roughness: 0.8,
     metalness: 0.2
 });
-baseGroundMaterial.map.wrapS = THREE.RepeatWrapping;
-baseGroundMaterial.map.wrapT = THREE.RepeatWrapping;
 
-function createStraightSectionGraphics(width, height, length, position, textureRepeatX, textureRepeatY) {
+function createStraightSectionGraphics(width, height, length, position) { // Removed textureRepeatX, textureRepeatY
     const geometry = new THREE.BoxGeometry(width, height, length);
-    const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
-    material.map = baseGroundMaterial.map.clone();
-    material.map.repeat.set(textureRepeatX, textureRepeatY);
-    material.map.needsUpdate = true;
+    // const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
+    // material.map = baseGroundMaterial.map.clone();
+    // material.map.repeat.set(textureRepeatX, textureRepeatY);
+    // material.map.needsUpdate = true;
+    const material = baseGroundMaterial; // Use the base material directly
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(position);
@@ -71,7 +70,7 @@ function createStraightSectionGraphics(width, height, length, position, textureR
     scene.add(mesh);
 }
 
-function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, height, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name, textureRepeatU, textureRepeatV) {
+function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, height, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name) { // Removed textureRepeatU, textureRepeatV
     const shape = new THREE.Shape();
     shape.moveTo(innerRadius * Math.cos(shapeStartAngle), innerRadius * Math.sin(shapeStartAngle));
     shape.absarc(0, 0, innerRadius, shapeStartAngle, shapeEndAngle, !shapeOuterArcClockwise);
@@ -86,17 +85,19 @@ function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, hei
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
     geometry.rotateX(-Math.PI / 2); // Align with XZ plane
 
-    const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
-    material.map = baseGroundMaterial.map.clone();
+    // const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
+    // material.map = baseGroundMaterial.map.clone();
     // For ExtrudeGeometry, UVs might need more complex handling for perfect texture mapping on curves.
     // Simple repeat might look stretched. For now, using a basic repeat.
-    const courseWidth = outerRadius - innerRadius;
-    const averageCircumference = Math.PI * (innerRadius + outerRadius) / 2; // Half circumference for a semi-circle
-    material.map.repeat.set(courseWidth / 2, averageCircumference / 5); // Example repeat, adjust as needed
-    material.map.needsUpdate = true;
+    // const courseWidth = outerRadius - innerRadius;
+    // const averageCircumference = Math.PI * (innerRadius + outerRadius) / 2; // Half circumference for a semi-circle
+    // material.map.repeat.set(courseWidth / 20, averageCircumference / 40); // Values adjusted, e.g., dividing by larger numbers
+    // material.map.needsUpdate = true;
+    const material = baseGroundMaterial; // Use the base material directly
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(arcCenterPos);
+    mesh.position.y -= height / 2; // Adjust Y position to align top surface
     mesh.receiveShadow = true;
     mesh.name = name;
     scene.add(mesh);
@@ -105,12 +106,14 @@ function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, hei
 // Create the oval course graphics
 // Straight 1
 createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
-    new THREE.Vector3(-straightSpacingClient / 2, -groundHeightClient / 2, 0), 
-    straightWidthClient / 2, straightLengthClient / 5); // Texture repeat reverted
+    new THREE.Vector3(-straightSpacingClient / 2, -groundHeightClient / 2, 0)
+    // straightWidthClient / 2, straightLengthClient / 5); // Texture repeat arguments removed
+);
 // Straight 2
 createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
-    new THREE.Vector3(straightSpacingClient / 2, -groundHeightClient / 2, 0),
-    straightWidthClient / 2, straightLengthClient / 5); // Texture repeat reverted
+    new THREE.Vector3(straightSpacingClient / 2, -groundHeightClient / 2, 0)
+    // straightWidthClient / 2, straightLengthClient / 5); // Texture repeat arguments removed
+);
 
 // Corner parameters
 const R_inner_client = straightSpacingClient / 2 - straightWidthClient / 2;
@@ -119,11 +122,30 @@ const arcCenterY_client = -groundHeightClient / 2;
 
 // Corner 1 (Positive Z)
 const arcPos1_client = new THREE.Vector3(0, arcCenterY_client, straightLengthClient / 2);
-createCornerSectionGraphics(arcPos1_client, R_inner_client, R_outer_client, groundHeightClient, Math.PI, 0, true, "corner1_graphics", 5, 10);
+createCornerSectionGraphics(arcPos1_client, R_inner_client, R_outer_client, groundHeightClient, Math.PI, 0, true, "corner1_graphics"); // Texture repeat arguments removed
 
 // Corner 2 (Negative Z)
 const arcPos2_client = new THREE.Vector3(0, arcCenterY_client, -straightLengthClient / 2);
-createCornerSectionGraphics(arcPos2_client, R_inner_client, R_outer_client, groundHeightClient, 0, Math.PI, true, "corner2_graphics", 5, 10);
+createCornerSectionGraphics(arcPos2_client, R_inner_client, R_outer_client, groundHeightClient, 0, Math.PI, true, "corner2_graphics");
+
+// --- Start Line ---
+const startLineWidth = straightWidthClient; // Match straight section width
+const startLineDepth = 0.5; // How wide the line is along the Z axis // Changed from 1.0
+const startLineHeight = 0.1; // Slightly above the ground to prevent z-fighting // Changed from 0.2
+
+const startLineGeometry = new THREE.BoxGeometry(startLineWidth, startLineHeight, startLineDepth);
+const startLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); // Changed to MeshBasicMaterial
+const startLineMesh = new THREE.Mesh(startLineGeometry, startLineMaterial);
+
+// Position it on the first straight section, at Z=0
+startLineMesh.position.set(
+    -straightSpacingClient / 2, // X position of the first straight
+    -groundHeightClient / 2 + startLineHeight / 2 + 0.01, // Y position, slightly above ground and ensure visibility
+    0 // Z position (center of the straight)
+);
+startLineMesh.receiveShadow = false; // Start line probably doesn't need to receive shadows
+scene.add(startLineMesh);
+console.log('Start line mesh (enlarged) added to scene at X:', startLineMesh.position.x, 'Y:', startLineMesh.position.y, 'Z:', startLineMesh.position.z, 'Size (W,H,D):', startLineWidth, startLineHeight, startLineDepth);
 
 console.log("Oval course graphics setup initiated.");
 
@@ -138,7 +160,7 @@ const speedDataElement = document.getElementById('speedData');
 
 // Vehicle dimensions (should match server-side for consistency in appearance)
 const chassisSize = { x: 1, y: 0.5, z: 2 };
-const wheelRadius = 0.3;
+const wheelRadius = 0.3; // Added initializer
 const wheelWidth = 0.3; // For CylinderGeometry - Changed from 0.2 to 0.3
 
 function createVehicleGraphic(vehicleId, color = 0xff0000) { // Add color parameter, default to red
@@ -328,23 +350,23 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-function createCheckerboardTexture(width, height, segmentsX, segmentsY, color1, color2) {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-
-    const segmentWidth = width / segmentsX;
-    const segmentHeight = height / segmentsY;
-
-    for (let y = 0; y < segmentsY; y++) {
-        for (let x = 0; x < segmentsX; x++) {
-            context.fillStyle = (x + y) % 2 === 0 ? color1 : color2;
-            context.fillRect(x * segmentWidth, y * segmentHeight, segmentWidth, segmentHeight);
-        }
-    }
-    return new THREE.CanvasTexture(canvas);
-}
+// function createCheckerboardTexture(width, height, segmentsX, segmentsY, color1, color2) {
+// const canvas = document.createElement('canvas');
+// canvas.width = width;
+// canvas.height = height;
+// const context = canvas.getContext('2d');
+//
+// const segmentWidth = width / segmentsX;
+// const segmentHeight = height / segmentsY;
+//
+// for (let y = 0; y < segmentsY; y++) {
+// for (let x = 0; x < segmentsX; x++) {
+// context.fillStyle = (x + y) % 2 === 0 ? color1 : color2;
+// context.fillRect(x * segmentWidth, y * segmentHeight, segmentWidth, segmentHeight);
+// }
+// }
+// return new THREE.CanvasTexture(canvas);
+// }
 
 // --- Three.js setup ---
 

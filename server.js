@@ -116,6 +116,7 @@ function createCornerSectionPhysics(arcCenterPos, innerRadius, outerRadius, heig
     const body = new CANNON.Body({ mass: 0, material: groundMaterial });
     body.addShape(cannonShape);
     body.position.copy(arcCenterPos); // Set position of the Trimesh body
+    body.position.y -= height / 2; // Adjust Y position to align top surface
     // body.quaternion.copy(mesh.quaternion); // Not needed as geometry is already rotated
     world.addBody(body);
     console.log(`Corner section '${name}' created at ${arcCenterPos.x}, ${arcCenterPos.y}, ${arcCenterPos.z}`);
