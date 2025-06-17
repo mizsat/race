@@ -54,9 +54,9 @@ function updateMinimapView() {
 updateMinimapView();
 
 // --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Changed from 0.6
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Changed from 0.65 to 0.8
 scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Changed from 0.8
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Changed from 0.85 to 1.0
 directionalLight.position.set(10, 50, 5); // Match script.js: Y from 30 to 50, Z from 10 to 5
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 1024;
@@ -75,33 +75,124 @@ scene.add(directionalLight);
 // const shadowHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
 // scene.add(shadowHelper);
 
-// --- Ground Graphics (Oval Course) ---
-// const groundGeometry = new THREE.BoxGeometry(100, 0.2, 100); // Old flat ground
-// const checkerboardTexture = createCheckerboardTexture(512, 32);
-// const groundMaterial = new THREE.MeshStandardMaterial({
-//    map: checkerboardTexture,
-//    roughness: 0.8,
-//    metalness: 0.2
-// });
-// const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-// groundMesh.position.y = -0.1;
-// groundMesh.receiveShadow = true;
-// scene.add(groundMesh);
-// console.log("Old ground graphics removed.");
+// --- Texture Loader for Test Cube AND Course ---
+const textureLoader = new THREE.TextureLoader(); // Combined loader
+let courseTextureObject = null; // To store the loaded course texture and its properties
+// let courseTextureNaturalWidth = 1; // No longer strictly needed for repeat logic if using fixed tile size
+// let courseTextureNaturalHeight = 1; // No longer strictly needed for repeat logic if using fixed tile size
+const TEXTURE_TILE_SIZE = 5.0; // World units for one tile of the texture - Changed from 20.0 to 5.0
 
+// --- Ground Graphics (Oval Course) ---
 const baseGroundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x808080, // Set color to grey
+    // color: 0x808080, // Will be replaced by texture if loaded
     roughness: 0.8,
     metalness: 0.2
 });
 
-function createStraightSectionGraphics(width, height, length, position) { // Removed textureRepeatX, textureRepeatY
+textureLoader.load(
+    'texture.jpg', // Path to your texture
+    function (texture) { // onLoad callback
+        console.log('Course texture loaded successfully!');
+        texture.encoding = THREE.sRGBEncoding; // Important for color accuracy
+        
+        // Set wrapping to RepeatWrapping for the original texture
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+
+        courseTextureObject = texture; // Store the loaded texture
+        // if (texture.image && texture.image.naturalWidth > 0 && texture.image.naturalHeight > 0) {
+        //     courseTextureNaturalWidth = texture.image.naturalWidth;
+        //     courseTextureNaturalHeight = texture.image.naturalHeight;
+        //     console.log(`Texture dimensions: ${courseTextureNaturalWidth}x${courseTextureNaturalHeight}`);
+        // } else {
+        //     console.warn('Texture image not yet fully available or has zero dimensions.');
+        // }
+        
+        baseGroundMaterial.color.set(0xffffff); 
+
+        // Create the oval course graphics NOW that the texture is loaded
+        // Straight 1
+        createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
+            new THREE.Vector3(-straightSpacingClient / 2, -groundHeightClient / 2, 0),
+            courseTextureObject // Pass the loaded texture object
+        );
+        // Straight 2
+        createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
+            new THREE.Vector3(straightSpacingClient / 2, -groundHeightClient / 2, 0),
+            courseTextureObject // Pass the loaded texture object
+        );
+
+        // Corner parameters
+        const R_inner_client = straightSpacingClient / 2 - straightWidthClient / 2;
+        const R_outer_client = straightSpacingClient / 2 + straightWidthClient / 2;
+        const arcCenterY_client = -groundHeightClient / 2;
+
+        // Corner 1 (Positive Z)
+        const arcPos1_client = new THREE.Vector3(0, arcCenterY_client, straightLengthClient / 2);
+        createCornerSectionGraphics(arcPos1_client, R_inner_client, R_outer_client, groundHeightClient, Math.PI, 0, true, "corner1_graphics", courseTextureObject);
+
+        // Corner 2 (Negative Z)
+        const arcPos2_client = new THREE.Vector3(0, arcCenterY_client, -straightLengthClient / 2);
+        createCornerSectionGraphics(arcPos2_client, R_inner_client, R_outer_client, groundHeightClient, 0, Math.PI, true, "corner2_graphics", courseTextureObject);
+
+        console.log("Oval course graphics setup initiated with texture.");
+    },
+    undefined, // onProgress callback currently not used
+    function (err) { // onError callback
+        console.error('An error happened during course texture loading:', err);
+        baseGroundMaterial.color.set(0x888888); // Fallback color if texture fails
+        baseGroundMaterial.map = null;
+        baseGroundMaterial.needsUpdate = true;
+
+        console.log("Oval course graphics setup initiated WITHOUT texture due to loading error. Will be grey.");
+        // Straight 1
+        createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
+            new THREE.Vector3(-straightSpacingClient / 2, -groundHeightClient / 2, 0) // No texture passed
+        );
+        // Straight 2
+        createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
+            new THREE.Vector3(straightSpacingClient / 2, -groundHeightClient / 2, 0) // No texture passed
+        );
+        // Corner parameters
+        const R_inner_client = straightSpacingClient / 2 - straightWidthClient / 2;
+        const R_outer_client = straightSpacingClient / 2 + straightWidthClient / 2;
+        const arcCenterY_client = -groundHeightClient / 2;
+        // Corner 1 (Positive Z)
+        const arcPos1_client = new THREE.Vector3(0, arcCenterY_client, straightLengthClient / 2);
+        createCornerSectionGraphics(arcPos1_client, R_inner_client, R_outer_client, groundHeightClient, Math.PI, 0, true, "corner1_graphics"); // No texture
+        // Corner 2 (Negative Z)
+        const arcPos2_client = new THREE.Vector3(0, arcCenterY_client, -straightLengthClient / 2);
+        createCornerSectionGraphics(arcPos2_client, R_inner_client, R_outer_client, groundHeightClient, 0, Math.PI, true, "corner2_graphics"); // No texture
+    }
+);
+
+
+function createStraightSectionGraphics(width, height, length, position, textureInstance) { 
     const geometry = new THREE.BoxGeometry(width, height, length);
-    // const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
-    // material.map = baseGroundMaterial.map.clone();
-    // material.map.repeat.set(textureRepeatX, textureRepeatY);
-    // material.map.needsUpdate = true;
-    const material = baseGroundMaterial; // Use the base material directly
+    const material = baseGroundMaterial.clone(); // Clone the base material
+
+    if (textureInstance && textureInstance.isTexture) {
+        const clonedTexture = textureInstance.clone(); // Clone the texture itself
+        clonedTexture.needsUpdate = true; // Important for cloned texture
+        
+        // Ensure wrap settings are on the clone as well (inherited, but good to be explicit if ever changed)
+        clonedTexture.wrapS = THREE.RepeatWrapping;
+        clonedTexture.wrapT = THREE.RepeatWrapping;
+
+        // Calculate repeat based on geometry size and desired tile size
+        const repeatX = width / TEXTURE_TILE_SIZE;
+        const repeatY = length / TEXTURE_TILE_SIZE; // For BoxGeometry top face, length corresponds to V direction
+        
+        clonedTexture.repeat.set(repeatX, repeatY);
+        clonedTexture.offset.set(0, 0); // No offset needed for simple repeat
+        
+        material.map = clonedTexture;
+        material.color.set(0xffffff); // Ensure texture colors are shown
+    } else {
+         material.color.set(0x707070); 
+         material.map = null;
+    }
+    material.needsUpdate = true; 
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(position);
@@ -109,7 +200,7 @@ function createStraightSectionGraphics(width, height, length, position) { // Rem
     scene.add(mesh);
 }
 
-function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, height, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name) { // Removed textureRepeatU, textureRepeatV
+function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, height, shapeStartAngle, shapeEndAngle, shapeOuterArcClockwise, name, textureInstance) {
     const shape = new THREE.Shape();
     shape.moveTo(innerRadius * Math.cos(shapeStartAngle), innerRadius * Math.sin(shapeStartAngle));
     shape.absarc(0, 0, innerRadius, shapeStartAngle, shapeEndAngle, !shapeOuterArcClockwise);
@@ -124,15 +215,60 @@ function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, hei
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
     geometry.rotateX(-Math.PI / 2); // Align with XZ plane
 
-    // const material = baseGroundMaterial.clone(); // Clone for independent texture repeat
-    // material.map = baseGroundMaterial.map.clone();
-    // For ExtrudeGeometry, UVs might need more complex handling for perfect texture mapping on curves.
-    // Simple repeat might look stretched. For now, using a basic repeat.
-    // const courseWidth = outerRadius - innerRadius;
-    // const averageCircumference = Math.PI * (innerRadius + outerRadius) / 2; // Half circumference for a semi-circle
-    // material.map.repeat.set(courseWidth / 20, averageCircumference / 40); // Values adjusted, e.g., dividing by larger numbers
-    // material.map.needsUpdate = true;
-    const material = baseGroundMaterial; // Use the base material directly
+    // --- UV Adjustment for Extruded Top Surface (Normalization) ---
+    const positions = geometry.attributes.position.array;
+    const uvs = geometry.attributes.uv.array;
+    const numVertices = positions.length / 3;
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < numVertices; i++) {
+        const x = positions[i * 3];
+        const z = positions[i * 3 + 2]; 
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minZ = Math.min(minZ, z);
+        maxZ = Math.max(maxZ, z);
+    }
+
+    const rangeX = maxX - minX; // This is the width of the corner's bounding box
+    const rangeZ = maxZ - minZ; // This is the "depth" or "height" of the corner's bounding box in its local Z
+
+    if (rangeX > 0 && rangeZ > 0) {
+        for (let i = 0; i < numVertices; i++) {
+            const x = positions[i * 3];
+            const z = positions[i * 3 + 2];
+            uvs[i * 2] = (x - minX) / rangeX;         
+            uvs[i * 2 + 1] = 1.0 - ((z - minZ) / rangeZ); 
+        }
+        geometry.attributes.uv.needsUpdate = true;
+        console.log(`UVs normalized for corner: ${name} (Range X: ${rangeX.toFixed(2)}, Range Z: ${rangeZ.toFixed(2)})`);
+    }
+    // --- End of UV Normalization ---
+
+    const material = baseGroundMaterial.clone();
+    
+    if (textureInstance && textureInstance.isTexture && rangeX > 0 && rangeZ > 0) {
+        const clonedTexture = textureInstance.clone(); // Clone the texture
+        clonedTexture.needsUpdate = true;
+        
+        clonedTexture.wrapS = THREE.RepeatWrapping;
+        clonedTexture.wrapT = THREE.RepeatWrapping;
+
+        // Calculate repeat based on the corner's bounding box and desired tile size
+        // The UVs are already normalized (0-1) across this rangeX and rangeZ.
+        const repeatU = rangeX / TEXTURE_TILE_SIZE;
+        const repeatV = rangeZ / TEXTURE_TILE_SIZE;
+        
+        clonedTexture.repeat.set(repeatU, repeatV);
+        clonedTexture.offset.set(0, 0);
+
+        material.map = clonedTexture;
+        material.color.set(0xffffff);
+    } else {
+        material.color.set(0x606060); 
+        material.map = null;
+    }
+    material.needsUpdate = true; 
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(arcCenterPos);
@@ -141,31 +277,6 @@ function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, hei
     mesh.name = name;
     scene.add(mesh);
 }
-
-// Create the oval course graphics
-// Straight 1
-createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
-    new THREE.Vector3(-straightSpacingClient / 2, -groundHeightClient / 2, 0)
-    // straightWidthClient / 2, straightLengthClient / 5); // Texture repeat arguments removed
-);
-// Straight 2
-createStraightSectionGraphics(straightWidthClient, groundHeightClient, straightLengthClient, 
-    new THREE.Vector3(straightSpacingClient / 2, -groundHeightClient / 2, 0)
-    // straightWidthClient / 2, straightLengthClient / 5); // Texture repeat arguments removed
-);
-
-// Corner parameters
-const R_inner_client = straightSpacingClient / 2 - straightWidthClient / 2;
-const R_outer_client = straightSpacingClient / 2 + straightWidthClient / 2;
-const arcCenterY_client = -groundHeightClient / 2;
-
-// Corner 1 (Positive Z)
-const arcPos1_client = new THREE.Vector3(0, arcCenterY_client, straightLengthClient / 2);
-createCornerSectionGraphics(arcPos1_client, R_inner_client, R_outer_client, groundHeightClient, Math.PI, 0, true, "corner1_graphics"); // Texture repeat arguments removed
-
-// Corner 2 (Negative Z)
-const arcPos2_client = new THREE.Vector3(0, arcCenterY_client, -straightLengthClient / 2);
-createCornerSectionGraphics(arcPos2_client, R_inner_client, R_outer_client, groundHeightClient, 0, Math.PI, true, "corner2_graphics");
 
 // --- Start Line ---
 const startLineWidth = straightWidthClient; // Match straight section width

@@ -296,7 +296,7 @@ wss.on('connection', (ws) => {
 // --- Physics Loop (Server-side) ---
 const timeStep = 1 / 60;
 const maxSteerVal = 0.5;
-const maxForce = 200;
+const maxForce = 240; // Changed from 200 to 240
 // const brakeForce = 20; // Explicit brake force for ArrowDown, now used for reverse
 // const gentleBrakeForce = 2; // New: Force for gentle braking when no input. Value changed from 5 to 2.
 const fallResetThresholdY = -10; // Y-coordinate threshold for reset
