@@ -31,10 +31,14 @@
 </head>
 <body>
     <div id="infoPanel">
-        <div>Position: <span id="positionData">N/A</span></div>
-        <div>Speed: <span id="speedData">N/A</span></div>
+        <div id="vehicleInfo">
+            Your Vehicle ID: <span id="vehicleId">N/A</span><br>
+            Position: <span id="positionData">X: 0, Y: 0, Z: 0</span><br>
+            Speed: <span id="speedData">0 units/s</span><br>
+            On Course: <span id="onCourseData">N/A</span> <!-- Added for onCourse status -->
+        </div>
     </div>
-    <div id="minimapContainer"></div> <!-- ミニマップ用のコンテナ -->
+    <div id="minimapContainer"></div> <!-- Moved minimapContainer here -->
     <script type="module" src="script_vehicle_mp.js"></script> <!-- 新しいスクリプトを読み込む -->
 </body>
 </html>

@@ -36,21 +36,33 @@ const vehicleColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0x00ffff, 0xff00f
 console.log("Cannon.js world setup completed.");
 
 // --- Materials ---
-const groundMaterial = new CANNON.Material("groundMaterial");
-// const ballMaterial = new CANNON.Material("ballMaterial"); // No longer just a ball
+const groundMaterial = new CANNON.Material("groundMaterial"); 
+// const offRoadMaterial = new CANNON.Material("offRoadMaterial"); // REMOVED
 const vehicleMaterial = new CANNON.Material("vehicleMaterial"); // For vehicle chassis
 
 const vehicleGroundContactMaterial = new CANNON.ContactMaterial(
-    groundMaterial,
+    groundMaterial, // Course material AND safety ground
     vehicleMaterial,
     {
-        friction: 0.3, // Friction between vehicle and ground
+        friction: 0.3, // Normal friction
         restitution: 0.1,
         contactEquationStiffness: 1e8,
         contactEquationRelaxation: 3,
     }
 );
 world.addContactMaterial(vehicleGroundContactMaterial);
+
+// const vehicleOffRoadContactMaterial = new CANNON.ContactMaterial( // REMOVED BLOCK
+//     offRoadMaterial, 
+//     vehicleMaterial,
+//     {
+//         friction: 200.0, 
+//         restitution: 0.1, 
+//         contactEquationStiffness: 1e8,
+//         contactEquationRelaxation: 3,
+//     }
+// );
+// world.addContactMaterial(vehicleOffRoadContactMaterial); // REMOVED
 
 // --- Ground Physics (Oval Course) ---
 // const groundSize = { x: 100, y: 0.1, z: 100 }; // Old flat ground
@@ -170,7 +182,7 @@ const safetyGroundYPosition_server = -groundHeight - (safetyGroundHeight_server 
 const safetyGroundShape_server = new CANNON.Box(new CANNON.Vec3(safetyGroundSizeX_server * 0.5, safetyGroundHeight_server * 0.5, safetyGroundSizeZ_server * 0.5));
 const safetyGroundBody_server = new CANNON.Body({
     mass: 0, // Static body
-    material: groundMaterial, // Use the same material as the course for consistent contact properties
+    material: groundMaterial, // CHANGED BACK to groundMaterial
     position: new CANNON.Vec3(0, safetyGroundYPosition_server, 0)
 });
 safetyGroundBody_server.addShape(safetyGroundShape_server);
@@ -328,32 +340,103 @@ const maxForce = 240; // Changed from 200 to 240
 // const gentleBrakeForce = 2; // New: Force for gentle braking when no input. Value changed from 5 to 2.
 const fallResetThresholdY = -10; // Y-coordinate threshold for reset
 
+// const BRAKE_FORCE_OFF_COURSE = 80; // REMOVED - Replaced by damping adjustment
+
+const NORMAL_LINEAR_DAMPING = 0.1; // Default linear damping for chassisBody
+const OFF_COURSE_LINEAR_DAMPING = 0.8; // Increased linear damping for off-course
+
+// Helper function to check if the vehicle is on the course
+function isVehicleOnCourse(vehiclePosition) {
+    const x = vehiclePosition.x;
+    const z = vehiclePosition.z;
+
+    // Course parameters (ensure these are consistent with course creation)
+    // const straightLength = 70;
+    // const straightWidth = 10;
+    // const straightSpacing = 40;
+    // const R_inner = straightSpacing / 2 - straightWidth / 2; // Already defined globally
+    // const R_outer = straightSpacing / 2 + straightWidth / 2; // Already defined globally
+
+    // Check straight sections
+    // Straight 1 (negative X side)
+    const straight1MinX = -straightSpacing / 2 - straightWidth / 2;
+    const straight1MaxX = -straightSpacing / 2 + straightWidth / 2;
+    if (x >= straight1MinX && x <= straight1MaxX && z >= -straightLength / 2 && z <= straightLength / 2) {
+        return true;
+    }
+    // Straight 2 (positive X side)
+    const straight2MinX = straightSpacing / 2 - straightWidth / 2;
+    const straight2MaxX = straightSpacing / 2 + straightWidth / 2;
+    if (x >= straight2MinX && x <= straight2MaxX && z >= -straightLength / 2 && z <= straightLength / 2) {
+        return true;
+    }
+
+    // Check corner sections
+    // Corner 1 (Positive Z end)
+    const corner1CenterX = 0;
+    const corner1CenterZ = straightLength / 2;
+    const distToCorner1CenterSq = Math.pow(x - corner1CenterX, 2) + Math.pow(z - corner1CenterZ, 2);
+    if (distToCorner1CenterSq >= R_inner * R_inner && distToCorner1CenterSq <= R_outer * R_outer) {
+        // Check if within the semicircle part (z > center Z for top corner)
+        if (z >= corner1CenterZ) { 
+            const angle = Math.atan2(z - corner1CenterZ, x - corner1CenterX);
+            if (angle >= 0 && angle <= Math.PI) { // 0 to PI for the top semicircle
+                return true;
+            }
+        }
+    }
+
+    // Corner 2 (Negative Z end)
+    const corner2CenterX = 0;
+    const corner2CenterZ = -straightLength / 2;
+    const distToCorner2CenterSq = Math.pow(x - corner2CenterX, 2) + Math.pow(z - corner2CenterZ, 2);
+    if (distToCorner2CenterSq >= R_inner * R_inner && distToCorner2CenterSq <= R_outer * R_outer) {
+        // Check if within the semicircle part (z < center Z for bottom corner)
+         if (z <= corner2CenterZ) { 
+            const angle = Math.atan2(z - corner2CenterZ, x - corner2CenterX);
+            if (angle <= 0 && angle >= -Math.PI) { // -PI to 0 for the bottom semicircle
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 setInterval(() => {
     clientInputs.forEach((input, ws) => {
         if (vehicles.has(ws)) {
             const vehicleData = vehicles.get(ws);
             const vehicle = vehicleData.vehicle;
+            const chassisBody = vehicleData.chassisBody;
 
             let engineForce = 0;
 
             if (input.dz < 0) { // ArrowUp for forward
-                engineForce = input.dz * maxForce; // 前進 (dzは負なので、engineForceも負)
+                engineForce = input.dz * maxForce; 
             } else if (input.dz > 0) { // ArrowDown for backward
-                engineForce = input.dz * maxForce; // 後進 (dzは正なので、engineForceも正)
+                engineForce = input.dz * maxForce; 
             }
 
-            // Apply engine force to rear wheels (indices 2 and 3)
             vehicle.applyEngineForce(engineForce, 2);
             vehicle.applyEngineForce(engineForce, 3);
 
-            // Brakes are always off unless a specific brake input is implemented
-            for (let i = 0; i < vehicle.wheelInfos.length; i++) {
-                vehicle.setBrake(0, i); // Always release brake
+            const onCourse = isVehicleOnCourse(chassisBody.position);
+
+            if (onCourse) {
+                chassisBody.linearDamping = NORMAL_LINEAR_DAMPING;
+                for (let i = 0; i < vehicle.wheelInfos.length; i++) {
+                    vehicle.setBrake(0, i); 
+                }
+            } else {
+                chassisBody.linearDamping = OFF_COURSE_LINEAR_DAMPING;
+                // No explicit brake applied here anymore, relying on increased damping
+                for (let i = 0; i < vehicle.wheelInfos.length; i++) {
+                    vehicle.setBrake(0, i); // Ensure brakes are off if not explicitly applied for off-course
+                }
             }
             
-            // Set steering value for front wheels (indices 0 and 1)
-            vehicle.setSteeringValue(-input.dx * maxSteerVal, 0); // 変更: input.dx の符号を反転
-            vehicle.setSteeringValue(-input.dx * maxSteerVal, 1); // 変更: input.dx の符号を反転
+            vehicle.setSteeringValue(-input.dx * maxSteerVal, 0); 
+            vehicle.setSteeringValue(-input.dx * maxSteerVal, 1); 
         }
     });
 
@@ -372,6 +455,7 @@ setInterval(() => {
 
     const allVehiclesState = [];
     vehicles.forEach(vehicleData => {
+        const onCourse = isVehicleOnCourse(vehicleData.chassisBody.position);
         allVehiclesState.push({
             id: vehicleData.id,
             chassis: {
@@ -383,8 +467,9 @@ setInterval(() => {
                 position: wheel.worldTransform.position,
                 quaternion: wheel.worldTransform.quaternion
             })),
-            speed: vehicleData.chassisBody.velocity.length(), // Add speed calculation
-            color: vehicleData.color // Add color information
+            speed: vehicleData.chassisBody.velocity.length(),
+            color: vehicleData.color,
+            onCourse: onCourse // Add onCourse status
         });
     });
 

@@ -280,17 +280,17 @@ function createCornerSectionGraphics(arcCenterPos, innerRadius, outerRadius, hei
 
 // --- Start Line ---
 const startLineWidth = straightWidthClient; // Match straight section width
-const startLineDepth = 0.5; // How wide the line is along the Z axis // Changed from 1.0
-const startLineHeight = 0.1; // Slightly above the ground to prevent z-fighting // Changed from 0.2
+const startLineDepth = 0.5; // How wide the line is along the Z axis
+const startLineHeight = 0.01; // Made very thin to appear like a line painted on the course
 
 const startLineGeometry = new THREE.BoxGeometry(startLineWidth, startLineHeight, startLineDepth);
-const startLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); // Changed to MeshBasicMaterial
+const startLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
 const startLineMesh = new THREE.Mesh(startLineGeometry, startLineMaterial);
 
 // Position it on the first straight section, at Z=0
 startLineMesh.position.set(
     -straightSpacingClient / 2, // X position of the first straight
-    -groundHeightClient / 2 + startLineHeight / 2 + 0.01, // Y position, slightly above ground and ensure visibility
+    (startLineHeight / 2) + 0.001, // Y position: center of the thin line + very small offset above course (Y=0)
     0 // Z position (center of the straight)
 );
 startLineMesh.receiveShadow = false; // Start line probably doesn't need to receive shadows
@@ -338,6 +338,7 @@ let myVehicleId = null; // To identify the client's own vehicle
 // DOM elements for displaying info
 const positionDataElement = document.getElementById('positionData');
 const speedDataElement = document.getElementById('speedData');
+const onCourseDataElement = document.getElementById('onCourseData'); // Added for onCourse status
 
 // Vehicle dimensions (should match server-side for consistency in appearance)
 const chassisSize = { x: 1, y: 0.5, z: 2 };
@@ -445,8 +446,11 @@ socket.onmessage = (event) => {
                         const pos = vehicleState.chassis.position;
                         positionDataElement.textContent = `X: ${pos.x.toFixed(2)}, Y: ${pos.y.toFixed(2)}, Z: ${pos.z.toFixed(2)}`;
                     }
-                    if (speedDataElement && vehicleState.speed !== undefined) { // Check if speed data is sent
+                    if (speedDataElement && vehicleState.speed !== undefined) {
                         speedDataElement.textContent = `${vehicleState.speed.toFixed(2)} units/s`;
+                    }
+                    if (onCourseDataElement && vehicleState.onCourse !== undefined) { // Added for onCourse status
+                        onCourseDataElement.textContent = vehicleState.onCourse ? 'Yes' : 'No';
                     }
                 }
             });
