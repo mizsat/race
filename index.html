@@ -5,12 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multiplayer Vehicle Simulation</title> <!-- タイトルを変更 -->
     <link rel="stylesheet" href="style.css">
+    <style>
+        #infoPanel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            font-family: Arial, sans-serif;
+        }
+        #speedData {
+            font-weight: bold;
+        }
+        #minimapContainer { /* ミニマップコンテナのスタイル */
+            position: absolute;
+            top: 10px; /* bottom から top に変更 */
+            right: 10px;
+            width: 200px; /* ミニマップの幅 */
+            height: 150px; /* ミニマップの高さ */
+            border: 1px solid black; /* 境界線 */
+            background-color: rgba(0,0,0,0.5); /* 半透明の背景 */
+        }
+    </style>
 </head>
 <body>
-    <div id="infoPanel" style="position: absolute; top: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 10px; font-family: Arial, sans-serif;">
+    <div id="infoPanel">
         <div>Position: <span id="positionData">N/A</span></div>
         <div>Speed: <span id="speedData">N/A</span></div>
     </div>
+    <div id="minimapContainer"></div> <!-- ミニマップ用のコンテナ -->
     <script type="module" src="script_vehicle_mp.js"></script> <!-- 新しいスクリプトを読み込む -->
 </body>
 </html>

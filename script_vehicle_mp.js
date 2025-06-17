@@ -9,6 +9,50 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true; // Enable shadows
 document.body.appendChild(renderer.domElement);
 
+// --- Course Dimensions (used by Minimap and Ground Graphics) ---
+const groundHeightClient = 0.2; // Corresponds to server's groundHeight * 2 (due to BoxGeometry definition)
+const straightLengthClient = 70; // Match server-side
+const straightWidthClient = 10;  // Match server-side
+const straightSpacingClient = 40; // Match server-side
+
+// --- Minimap Setup ---
+const minimapContainer = document.getElementById('minimapContainer');
+const minimapRenderer = new THREE.WebGLRenderer({ alpha: true }); // alpha: true for transparent background if needed
+minimapContainer.appendChild(minimapRenderer.domElement);
+
+const courseWidthEstimate = straightSpacingClient + straightWidthClient + 20; // Add some margin
+const courseLengthEstimate = straightLengthClient + straightSpacingClient + 20; // Add some margin
+const minimapCamHeight = 100; // Height of the minimap camera
+
+// Define a fixed size for the minimap's view frustum
+const minimapViewWidth = 80; // Fixed width for the orthographic camera's view - Decreased from 130 for zoom in
+const minimapViewHeight = 80; // Fixed height for the orthographic camera's view - Decreased from 130 for zoom in
+
+const minimapCamera = new THREE.OrthographicCamera(
+    -minimapViewWidth / 2, minimapViewWidth / 2,
+    minimapViewHeight / 2, -minimapViewHeight / 2,
+    1, 1000 // near, far
+);
+minimapCamera.position.set(0, minimapCamHeight, 0); // Initial position
+// minimapCamera.lookAt(0, 0, 0); // Will be updated to follow the car
+
+// Helper function to update minimap renderer size
+function updateMinimapView() {
+    if (!minimapContainer) return;
+
+    // const minimapRect = minimapContainer.getBoundingClientRect(); // Previous method
+    // minimapRenderer.setSize(minimapRect.width, minimapRect.height); // Previous method
+
+    // Use clientWidth and clientHeight to get the inner dimensions of the container (excluding border)
+    minimapRenderer.setSize(minimapContainer.clientWidth, minimapContainer.clientHeight);
+
+    // The camera's left, right, top, bottom (defining its frustum/view size) are now fixed
+    // and do not change on resize. The renderer will scale the fixed view to fit the container.
+}
+
+// Initial setup of minimap view
+updateMinimapView();
+
 // --- Lighting ---
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Changed from 0.6
 scene.add(ambientLight);
@@ -28,8 +72,8 @@ directionalLight.shadow.camera.far = 500; // Match script.js: far from 200 to 50
 scene.add(directionalLight);
 
 // Optional: Shadow camera helper (for debugging shadow frustum)
-const shadowHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
-scene.add(shadowHelper);
+// const shadowHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
+// scene.add(shadowHelper);
 
 // --- Ground Graphics (Oval Course) ---
 // const groundGeometry = new THREE.BoxGeometry(100, 0.2, 100); // Old flat ground
@@ -44,11 +88,6 @@ scene.add(shadowHelper);
 // groundMesh.receiveShadow = true;
 // scene.add(groundMesh);
 // console.log("Old ground graphics removed.");
-
-const groundHeightClient = 0.2; // Corresponds to server's groundHeight * 2 (due to BoxGeometry definition)
-const straightLengthClient = 70; // Match server-side
-const straightWidthClient = 10;  // Match server-side
-const straightSpacingClient = 40; // Match server-side
 
 const baseGroundMaterial = new THREE.MeshStandardMaterial({
     color: 0x808080, // Set color to grey
@@ -144,7 +183,7 @@ startLineMesh.position.set(
     0 // Z position (center of the straight)
 );
 startLineMesh.receiveShadow = false; // Start line probably doesn't need to receive shadows
-scene.add(startLineMesh);
+scene.add(startLineMesh); // Add start line to the scene
 console.log('Start line mesh (enlarged) added to scene at X:', startLineMesh.position.x, 'Y:', startLineMesh.position.y, 'Z:', startLineMesh.position.z, 'Size (W,H,D):', startLineWidth, startLineHeight, startLineDepth);
 
 console.log("Oval course graphics setup initiated.");
@@ -314,8 +353,20 @@ document.addEventListener('keyup', (event) => {
 // --- Animation Loop ---
 function animate() {
     requestAnimationFrame(animate);
-    updateCamera(); // Update camera position each frame
+    updateCamera(); // Update main camera position each frame
+    updateMinimapCamera(); // Update minimap camera position each frame
+    
+    // Main rendering
     renderer.render(scene, camera);
+
+    // Minimap rendering
+    // Get the minimap container's current dimensions
+    const minimapRect = minimapContainer.getBoundingClientRect();
+    // Set the viewport to the minimap container's position and size
+    // minimapRenderer.setViewport(0, 0, minimapRect.width, minimapRect.height); // Handled by renderer.setSize
+    // minimapRenderer.setScissor(0, 0, minimapRect.width, minimapRect.height); // Handled by renderer.setSize
+    // minimapRenderer.setScissorTest(true);
+    minimapRenderer.render(scene, minimapCamera);
 }
 
 animate();
@@ -343,11 +394,44 @@ function updateCamera() {
     }
 }
 
+// --- Minimap Camera Follow Logic ---
+function updateMinimapCamera() {
+    if (myVehicleId && vehicleMeshes[myVehicleId]) {
+        const myVehicleChassis = vehicleMeshes[myVehicleId].chassis;
+        minimapCamera.position.x = myVehicleChassis.position.x;
+        minimapCamera.position.z = myVehicleChassis.position.z;
+        minimapCamera.position.y = minimapCamHeight; 
+
+        // Calculate vehicle's forward direction in world space (on XZ plane)
+        const carForward = new THREE.Vector3(0, 0, -1); // Local forward vector
+        carForward.applyQuaternion(myVehicleChassis.quaternion);
+        carForward.y = 0; // Project onto XZ plane
+        if (carForward.lengthSq() < 0.0001) { // Handle cases where XZ projection is near zero
+            // If car is pointing straight up/down, default to a sensible forward for minimap up
+            carForward.set(0, 0, -1); // Default to world -Z as 'forward' for up calculation
+        }
+        carForward.normalize();
+
+        // Set camera's up vector to the negation of car's forward to make car's forward point up on screen
+        minimapCamera.up.copy(carForward.clone().negate()); 
+        minimapCamera.lookAt(myVehicleChassis.position.x, myVehicleChassis.position.y, myVehicleChassis.position.z); // Look at the car
+
+    } else {
+        // Default minimap orientation if no vehicle to follow
+        minimapCamera.position.set(0, minimapCamHeight, 0);
+        minimapCamera.up.set(0, 0, -1); // Default up: world -Z points "up" on screen
+        minimapCamera.lookAt(0, 0, 0);
+    }
+}
+
 // Handle window resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Update minimap view (only renderer size)
+    updateMinimapView();
 });
 
 // function createCheckerboardTexture(width, height, segmentsX, segmentsY, color1, color2) {
