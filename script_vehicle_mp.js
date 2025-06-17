@@ -10,7 +10,7 @@ renderer.shadowMap.enabled = true; // Enable shadows
 document.body.appendChild(renderer.domElement);
 
 // --- Course Dimensions (used by Minimap and Ground Graphics) ---
-const groundHeightClient = 0.2; // Corresponds to server's groundHeight * 2 (due to BoxGeometry definition)
+const groundHeightClient = 0.05; // Corresponds to server's groundHeight, changed from 0.1
 const straightLengthClient = 70; // Match server-side
 const straightWidthClient = 10;  // Match server-side
 const straightSpacingClient = 40; // Match server-side
@@ -298,6 +298,37 @@ scene.add(startLineMesh); // Add start line to the scene
 console.log('Start line mesh (enlarged) added to scene at X:', startLineMesh.position.x, 'Y:', startLineMesh.position.y, 'Z:', startLineMesh.position.z, 'Size (W,H,D):', startLineWidth, startLineHeight, startLineDepth);
 
 console.log("Oval course graphics setup initiated.");
+
+// --- Fallback Ground (Safety Net) ---
+// Calculate the actual bounding box of the course
+const courseMaxX = (straightSpacingClient / 2) + (straightWidthClient / 2);
+const courseMinX = -courseMaxX;
+const courseActualWidth = courseMaxX - courseMinX; // straightSpacingClient + straightWidthClient
+
+const R_outer_client_for_calc = straightSpacingClient / 2 + straightWidthClient / 2;
+const courseMaxZ = (straightLengthClient / 2) + R_outer_client_for_calc;
+const courseMinZ = -(straightLengthClient / 2) - R_outer_client_for_calc;
+const courseActualLength = courseMaxZ - courseMinZ; // straightLengthClient + 2 * R_outer_client_for_calc = straightLengthClient + straightSpacingClient + straightWidthClient
+
+const margin = 40;
+const safetyGroundSizeX = courseActualWidth + margin * 4; // Changed from margin * 2 to margin * 4
+const safetyGroundSizeZ = courseActualLength + margin * 4; // Changed from margin * 2 to margin * 4
+
+const safetyGroundHeight = 1; // Thickness of the safety ground
+// Position its top surface at the bottom of the course
+const safetyGroundYPosition = -groundHeightClient - (safetyGroundHeight / 2); // Adjusted for new groundHeightClient logic
+
+const safetyGroundGeometry = new THREE.BoxGeometry(safetyGroundSizeX, safetyGroundHeight, safetyGroundSizeZ);
+const safetyGroundMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x404040, // Dark grey
+    roughness: 0.9,
+    metalness: 0.1 
+});
+const safetyGroundMesh = new THREE.Mesh(safetyGroundGeometry, safetyGroundMaterial);
+safetyGroundMesh.position.set(0, safetyGroundYPosition, 0);
+safetyGroundMesh.receiveShadow = true; // It can receive shadows from the course/vehicles
+scene.add(safetyGroundMesh);
+console.log(`Safety ground added at Y: ${safetyGroundYPosition} with size X: ${safetyGroundSizeX}, Z: ${safetyGroundSizeZ}`);
 
 
 // --- Vehicle Graphics (Manages multiple vehicles) ---

@@ -61,7 +61,7 @@ world.addContactMaterial(vehicleGroundContactMaterial);
 // world.addBody(groundBody);
 // console.log("Old ground physics setup removed.");
 
-const groundHeight = 0.1;
+const groundHeight = 0.05; // Changed from 0.1 to 0.05
 const straightLength = 70; // Reduced length for initial testing
 const straightWidth = 10;
 const straightSpacing = 40; // Reduced spacing
@@ -116,8 +116,7 @@ function createCornerSectionPhysics(arcCenterPos, innerRadius, outerRadius, heig
     const body = new CANNON.Body({ mass: 0, material: groundMaterial });
     body.addShape(cannonShape);
     body.position.copy(arcCenterPos); // Set position of the Trimesh body
-    body.position.y -= height / 2; // Adjust Y position to align top surface
-    // body.quaternion.copy(mesh.quaternion); // Not needed as geometry is already rotated
+    // body.position.y -= height / 2; // REMOVED: arcCenterPos.y should already be -height/2, so top is at Y=0
     world.addBody(body);
     console.log(`Corner section '${name}' created at ${arcCenterPos.x}, ${arcCenterPos.y}, ${arcCenterPos.z}`);
 }
@@ -127,6 +126,7 @@ function createCornerSectionPhysics(arcCenterPos, innerRadius, outerRadius, heig
 createStraightSectionPhysics(straightWidth, groundHeight, straightLength, new CANNON.Vec3(-straightSpacing / 2, -groundHeight / 2, 0));
 // Straight 2
 createStraightSectionPhysics(straightWidth, groundHeight, straightLength, new CANNON.Vec3(straightSpacing / 2, -groundHeight / 2, 0));
+
 
 // Corner parameters
 const R_inner = straightSpacing / 2 - straightWidth / 2;
@@ -150,6 +150,33 @@ try {
 }
 
 console.log("Oval course physics setup initiated.");
+
+// --- Fallback Ground Physics (Safety Net) ---
+// Match client-side dimensions and positioning logic as closely as possible
+const safetyGroundMargin_server = 40; // Margin, same as client (was 20)
+
+// Calculate actual course dimensions for server-side safety ground
+const courseActualWidth_server = straightSpacing + straightWidth;
+const courseActualLength_server = straightLength + (2 * R_outer); // R_outer already defined for corners
+
+const safetyGroundSizeX_server = courseActualWidth_server + safetyGroundMargin_server * 4; // Apply margin to both sides, changed from * 2 to * 4
+const safetyGroundSizeZ_server = courseActualLength_server + safetyGroundMargin_server * 4;   // Apply margin to both sides, changed from * 2 to * 4
+
+const safetyGroundHeight_server = 1; // Thickness of the safety ground (physics body)
+// Position its top surface at the bottom of the course physics
+// groundHeight is now 0.1. Course elements are positioned so their top is at Y=0, so bottom is at -groundHeight.
+const safetyGroundYPosition_server = -groundHeight - (safetyGroundHeight_server / 2); 
+
+const safetyGroundShape_server = new CANNON.Box(new CANNON.Vec3(safetyGroundSizeX_server * 0.5, safetyGroundHeight_server * 0.5, safetyGroundSizeZ_server * 0.5));
+const safetyGroundBody_server = new CANNON.Body({
+    mass: 0, // Static body
+    material: groundMaterial, // Use the same material as the course for consistent contact properties
+    position: new CANNON.Vec3(0, safetyGroundYPosition_server, 0)
+});
+safetyGroundBody_server.addShape(safetyGroundShape_server);
+world.addBody(safetyGroundBody_server);
+console.log(`Safety ground physics body added at Y: ${safetyGroundYPosition_server} with size X: ${safetyGroundSizeX_server}, Z: ${safetyGroundSizeZ_server}`);
+
 
 // --- Vehicle Physics (Manages multiple vehicles) ---
 const vehicles = new Map(); // Stores vehicle data (vehicle, chassisBody, id) keyed by WebSocket client
