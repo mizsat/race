@@ -15,6 +15,13 @@ const straightLengthClient = 70; // Match server-side
 const straightWidthClient = 10;  // Match server-side
 const straightSpacingClient = 40; // Match server-side
 
+// --- Camera Settings ---
+let cameraMode = 'rear'; // 'rear' or 'bonnet'. Default is rear view.
+const REAR_CAM_OFFSET = new THREE.Vector3(0, 4, -7); // For rear view
+const BONNET_CAM_OFFSET = new THREE.Vector3(0, 0.6, 0.5); // For bonnet view (y height, z forward)
+const BONNET_LOOK_AT_OFFSET = new THREE.Vector3(0, 0.5, 10); // Point in front for bonnet view
+let initialCameraSet = false; // Flag to set initial camera position only once
+
 // --- Minimap Setup ---
 const minimapContainer = document.getElementById('minimapContainer');
 const minimapRenderer = new THREE.WebGLRenderer({ alpha: true }); // alpha: true for transparent background if needed
@@ -372,8 +379,7 @@ function createVehicleGraphic(vehicleId, color = 0xff0000) { // Add color parame
     return { chassis: chassisMesh, wheels: wheels, id: vehicleId };
 }
 
-camera.position.set(0, 10, 15); // Initial camera position, will be updated by follow logic
-// camera.lookAt(0, 0, 0); // Will be updated by follow logic
+// camera.position.set(0, 10, 15); // REMOVED: Initial camera position is now set dynamically
 
 // --- Keyboard Input States ---
 const keyStates = {
@@ -442,6 +448,18 @@ socket.onmessage = (event) => {
 
                 // If this is the client's vehicle, update the info panel
                 if (vehicleState.id === myVehicleId) {
+                    // Set initial camera position on first data receive
+                    if (!initialCameraSet && vehicleMeshes[myVehicleId]) {
+                        const myVehicleChassis = vehicleMeshes[myVehicleId].chassis;
+                        const offset = REAR_CAM_OFFSET.clone();
+                        offset.applyQuaternion(myVehicleChassis.quaternion);
+                        offset.add(myVehicleChassis.position);
+                        camera.position.copy(offset);
+                        camera.lookAt(myVehicleChassis.position);
+                        initialCameraSet = true;
+                        console.log("Initial camera position set to default rear view.");
+                    }
+
                     if (positionDataElement) {
                         const pos = vehicleState.chassis.position;
                         positionDataElement.textContent = `X: ${pos.x.toFixed(2)}, Y: ${pos.y.toFixed(2)}, Z: ${pos.z.toFixed(2)}`;
@@ -485,6 +503,12 @@ function sendInputToServer() {
 
 // --- Keyboard Event Listeners ---
 document.addEventListener('keydown', (event) => {
+    if (event.code === 'Space') {
+        event.preventDefault(); // Prevent default action (like scrolling)
+        cameraMode = (cameraMode === 'rear') ? 'bonnet' : 'rear';
+        console.log(`Camera mode switched to: ${cameraMode}`);
+    }
+
     if (event.key in keyStates) {
         keyStates[event.key] = true;
     }
@@ -518,25 +542,32 @@ function animate() {
 animate();
 
 // --- Camera Follow Logic ---
-const cameraOffset = new THREE.Vector3(0, 4, -7); // Offset from the vehicle (Z成分の符号を反転して後方に)
+// const cameraOffset = new THREE.Vector3(0, 4, -7); // Replaced by mode-specific constants
 
 function updateCamera() {
     if (myVehicleId && vehicleMeshes[myVehicleId]) {
         const myVehicleChassis = vehicleMeshes[myVehicleId].chassis;
 
-        // Calculate camera position based on vehicle orientation and offset
-        const offset = cameraOffset.clone();
-        offset.applyQuaternion(myVehicleChassis.quaternion); // Rotate offset by vehicle's rotation
-        offset.add(myVehicleChassis.position); // Add vehicle's position
-        camera.position.copy(offset);
+        if (cameraMode === 'bonnet') {
+            // --- Bonnet View ---
+            const cameraPosition = BONNET_CAM_OFFSET.clone();
+            cameraPosition.applyQuaternion(myVehicleChassis.quaternion);
+            cameraPosition.add(myVehicleChassis.position);
+            camera.position.copy(cameraPosition); // Use copy for a rigid, first-person feel
 
-        // Make camera look at a point slightly in front of the vehicle's chassis
-        const lookAtPoint = myVehicleChassis.position.clone();
-        // Optional: Add a small forward offset to the lookAt point if desired
-        // const forward = new THREE.Vector3(0, 0, -2); // Local forward
-        // forward.applyQuaternion(myVehicleChassis.quaternion);
-        // lookAtPoint.add(forward);
-        camera.lookAt(lookAtPoint);
+            const lookAtPoint = BONNET_LOOK_AT_OFFSET.clone();
+            lookAtPoint.applyQuaternion(myVehicleChassis.quaternion);
+            lookAtPoint.add(myVehicleChassis.position);
+            camera.lookAt(lookAtPoint);
+
+        } else { // --- Rear View ---
+            const cameraPosition = REAR_CAM_OFFSET.clone();
+            cameraPosition.applyQuaternion(myVehicleChassis.quaternion);
+            cameraPosition.add(myVehicleChassis.position);
+            camera.position.copy(cameraPosition); // Use copy for a fixed, non-shaking camera. Reverted from lerp.
+
+            camera.lookAt(myVehicleChassis.position); // Look at the center of the vehicle
+        }
     }
 }
 
@@ -597,6 +628,4 @@ window.addEventListener('resize', () => {
 // }
 // return new THREE.CanvasTexture(canvas);
 // }
-
-// --- Three.js setup ---
 
